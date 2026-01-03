@@ -1,3 +1,4 @@
+pub mod app;
 pub mod apple_health;
 pub mod config;
 pub mod core;
