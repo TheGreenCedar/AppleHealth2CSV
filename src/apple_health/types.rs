@@ -1,6 +1,5 @@
-use crate::core::Processable;
 use crate::error::{AppError, Result};
-use crate::sinks::csv_zip::CsvWritable;
+use crate::record::RecordProjection;
 use ahash::AHashMap;
 use quick_xml::events::BytesStart;
 
@@ -27,8 +26,14 @@ impl GenericRecord {
             let key = String::from_utf8(attr.key.as_ref().to_vec())
                 .map_err(|e| AppError::ParseError(format!("Invalid attribute key: {}", e)))?;
 
-            let value = String::from_utf8(attr.value.into_owned())
-                .map_err(|e| AppError::ParseError(format!("Invalid attribute value: {}", e)))?;
+            let value = if attr.value.as_ref().contains(&b'&') {
+                attr.decode_and_unescape_value(element.decoder())
+                    .map_err(|e| AppError::ParseError(format!("Invalid attribute value: {}", e)))?
+                    .into_owned()
+            } else {
+                String::from_utf8(attr.value.into_owned())
+                    .map_err(|e| AppError::ParseError(format!("Invalid attribute value: {}", e)))?
+            };
 
             attributes.insert(key, value);
         }
@@ -40,49 +45,12 @@ impl GenericRecord {
     }
 }
 
-impl CsvWritable for GenericRecord {
-    fn header_keys(&self) -> impl Iterator<Item = &str> {
+impl RecordProjection for GenericRecord {
+    fn field_names(&self) -> impl Iterator<Item = &str> {
         self.attributes.keys().map(String::as_str)
     }
 
-    fn write<W: std::io::Write>(
-        &self,
-        writer: &mut csv::Writer<W>,
-        headers: &[&str],
-    ) -> csv::Result<()> {
-        let record: Vec<&str> = headers
-            .iter()
-            .map(|h| self.attributes.get(*h).map(String::as_str).unwrap_or(""))
-            .collect();
-        writer.write_record(&record)
-    }
-}
-
-impl Processable for GenericRecord {
-    fn grouping_key(&self) -> String {
-        if self.element_name == "Record" {
-            if let Some(typ) = self.attributes.get("type") {
-                return typ.clone();
-            }
-        }
-        self.element_name.clone()
-    }
-
-    fn sort_key(&self) -> Option<&str> {
-        let keys = [
-            "startDate",
-            "date",
-            "dateComponents",
-            "creationDate",
-            "endDate",
-            "dateIssued",
-            "receivedDate",
-        ];
-        for k in keys {
-            if let Some(v) = self.attributes.get(k) {
-                return Some(v.as_str());
-            }
-        }
-        None
+    fn field_value(&self, name: &str) -> Option<&str> {
+        self.attributes.get(name).map(String::as_str)
     }
 }

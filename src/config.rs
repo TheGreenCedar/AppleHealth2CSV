@@ -18,4 +18,16 @@ pub struct Config {
     /// Disable printing of end-of-run metrics
     #[arg(long)]
     pub no_metrics: bool,
+
+    /// Source adapter to use
+    #[arg(long, default_value = "apple-health")]
+    pub source: String,
+
+    /// Sink adapter to use
+    #[arg(long, default_value = "csv-zip")]
+    pub sink: String,
+
+    /// Continue past record-level parse failures and report skipped counts
+    #[arg(long)]
+    pub tolerant: bool,
 }

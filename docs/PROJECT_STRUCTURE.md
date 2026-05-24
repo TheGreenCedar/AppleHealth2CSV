@@ -1,48 +1,74 @@
 # Project Structure
 
-This document provides an overview of the repository layout and explains the purpose of the major directories and files.
+This document maps the current repository layout and the responsibility of each major file.
 
 ```text
 .
-├── src/                # Application and library code
-│   ├── main.rs         # Command-line entry point
-│   ├── lib.rs          # Library module declarations
-│   ├── config.rs       # CLI configuration and argument parsing
-│   ├── core.rs         # Core traits and the transformation engine
-│   ├── error.rs        # Centralized error definitions
-│   ├── xml_utils.rs    # Helpers for streaming XML processing
-│   ├── apple_health/   # Apple Health specific implementation
-│   │   ├── extractor.rs  # Extractor reading Apple Health exports
-│   │   ├── types.rs      # Data models representing XML records
-│   │   └── mod.rs        # Module declarations
-│   └── sinks/          # Output sinks for processed data
-│       ├── csv_zip.rs    # Sink writing grouped records to zipped CSV
+├── src/
+│   ├── main.rs              # CLI shell: logging, config parsing, exit codes
+│   ├── lib.rs               # Public library module declarations
+│   ├── config.rs            # CLI arguments and options
+│   ├── core.rs              # Extractor/Sink traits, events, materialized engine, run reports
+│   ├── pipeline.rs          # Pipeline registry and default Apple Health CSV ZIP pipeline
+│   ├── transform.rs         # TransformPolicy trait for grouping, sorting, filtering
+│   ├── record.rs            # RecordProjection trait used by sinks
+│   ├── error.rs             # Centralized typed errors
+│   ├── xml_utils.rs         # Generic streaming XML reader helpers
+│   ├── apple_health/
+│   │   ├── extractor.rs     # Apple Health XML/ZIP extractor and export.xml selection
+│   │   ├── policy.rs        # Apple Health grouping and sorting policy
+│   │   ├── types.rs         # Generic Apple Health XML element record
+│   │   └── mod.rs
+│   └── sinks/
+│       ├── csv_zip.rs       # Parallel CSV ZIP sink with safe names and temp-file persistence
 │       └── mod.rs
-├── tests/              # Unit and integration tests
-│   ├── fixtures/       # Sample XML exports used by tests
-│   ├── integration_tests.rs
-│   └── unit.rs
-├── Cargo.toml          # Package configuration
-├── README.md           # Project overview and usage instructions
-├── AGENTS.md           # Coding and contribution guidelines for Codex
-└── docs/               # Additional documentation (this folder)
-    └── PROJECT_STRUCTURE.md (this file)
+├── tests/
+│   ├── fixtures/
+│   │   └── sample_export.xml
+│   ├── integration_tests.rs # CLI/default pipeline and failure-path tests
+│   └── unit.rs              # Framework, policy, projection, and sink tests
+├── benches/
+│   ├── parse.rs
+│   └── flamegraph.rs
+├── .github/workflows/
+│   └── rust.yml
+├── Cargo.toml
+├── Cargo.lock
+├── README.md
+├── AGENTS.md
+└── docs/
+    └── PROJECT_STRUCTURE.md
 ```
 
-## Architectural Overview
+## Architecture Overview
 
-The project is built around a generic transformation engine defined in `src/core.rs`. The engine orchestrates the extraction of `Processable` records from an input source and loads the grouped records into a configurable sink. The first implementation focuses on Apple Health data:
+`gpt-os` is a reusable ETL framework with Apple Health as the default pipeline. The command `gpt-os <INPUT_FILE> <OUTPUT_ZIP>` still resolves to Apple Health input and CSV ZIP output, but the executable path is now composed explicitly:
 
-- **Extractor**: `apple_health::extractor::AppleHealthExtractor` reads zipped or plain XML exports and streams `GenericRecord` values.
-- **Processable types**: Defined in `apple_health::types`, these models represent the XML elements found in the export.
-- **Sink**: `sinks::csv_zip::CsvZipSink` groups the records and writes them to CSV files compressed with ZIP's Deflate (level 2) inside a ZIP archive. Future versions may allow the compression method to be configured.
-
-The command-line interface in `src/main.rs` wires these pieces together using `Config` from `src/config.rs`. Logging and error handling are provided by `env_logger` and the custom `error` module.
-
-Concurrency is managed by the Tokio async runtime. CPU intensive work is executed using blocking tasks when necessary.
-
-```
-Flow: Extractor -> Engine -> Sink
+```text
+CliShell -> PipelineRegistry -> PipelineSpec -> Extractor -> TransformPolicy -> MaterializedEngine -> RecordProjection -> CsvZipSink
 ```
 
-Future transformers or sinks can implement the `Extractor` and `Sink` traits to extend the tool for new data sources or output formats.
+## Component Responsibilities
+
+- **CliShell** (`main.rs`, `config.rs`): Parses CLI options, initializes logging, resolves a pipeline, runs it, and reports metrics.
+- **PipelineRegistry** (`pipeline.rs`): Resolves `apple-health -> csv-zip` as the default pipeline and validates source/sink names.
+- **MaterializedEngine** (`core.rs`): Receives extraction events, groups records in memory using a transform policy, sorts groups in parallel, and sends grouped records to a sink.
+- **ExtractorRuntime** (`core.rs`, `xml_utils.rs`): Streams XML events through a bounded synchronous parser channel bridged to the public Tokio receiver and propagates parse/runtime errors.
+- **TransformPolicy** (`transform.rs`, `apple_health/policy.rs`): Owns grouping, sorting, and filtering rules that used to live on records.
+- **RecordProjection** (`record.rs`, `apple_health/types.rs`): Gives sinks source-neutral field access.
+- **CsvZipSink** (`sinks/csv_zip.rs`): Serializes and compresses grouped CSV entries in parallel, merges them into a ZIP archive, and persists a temporary file to the final output path.
+- **AppleHealthSource** (`apple_health/extractor.rs`, `apple_health/types.rs`): Owns Apple Health ZIP member selection, XML parsing, and record construction.
+
+## Current Memory Model
+
+Extraction is streaming, but the current engine is intentionally materialized: it groups all records into memory before writing CSV output. A future streaming or spooling engine should be added as a separate engine path rather than silently changing the current contract.
+
+## Extension Guide
+
+To add another source:
+
+1. Define a record type and implement `RecordProjection` if existing sinks should consume it.
+2. Implement `Extractor<YourRecord>`.
+3. Implement `TransformPolicy<YourRecord>`.
+4. Register a pipeline in `PipelineRegistry`.
+5. Add framework and CLI tests that prove the default Apple Health pipeline still works.

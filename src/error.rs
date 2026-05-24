@@ -17,6 +17,24 @@ pub enum AppError {
     #[error("Thread pool build error: {0}")]
     ThreadPoolError(#[from] rayon::ThreadPoolBuildError),
 
+    #[error("Configuration error: {0}")]
+    ConfigError(String),
+
+    #[error("Channel error: {0}")]
+    ChannelError(String),
+
+    #[error("Task join error: {0}")]
+    TaskJoinError(String),
+
+    #[error("Worker panic: {0}")]
+    WorkerPanic(String),
+
+    #[error("Invalid ZIP entry name '{name}': {reason}")]
+    InvalidZipEntryName { name: String, reason: String },
+
+    #[error("Atomic output write error: {0}")]
+    AtomicWriteError(String),
+
     #[error("Unknown error: {0}")]
     Unknown(String),
 }

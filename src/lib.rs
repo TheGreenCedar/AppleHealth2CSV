@@ -2,5 +2,8 @@ pub mod apple_health;
 pub mod config;
 pub mod core;
 pub mod error;
+pub mod pipeline;
+pub mod record;
 pub mod sinks;
+pub mod transform;
 pub mod xml_utils;
