@@ -1,6 +1,6 @@
 # AppleHealth2CSV
 
-`AppleHealth2CSV` is a personal ETL tool and reusable Rust framework for transforming personal data into formats that are easy to inspect, research, and import into other workflows. The default pipeline processes Apple Health exports and writes grouped CSV files into a ZIP archive. I created it to make apple health exports more manageable to upload to chatgpt chats.
+`AppleHealth2CSV` is a personal ETL tool and reusable Rust framework for transforming personal data into formats that are easy to inspect, research, and import into other workflows. The default pipeline processes Apple Health exports and writes grouped CSV files into a ZIP archive. I created it to make apple health exports more manageable to manually upload to chatgpt chats.
 
 The command-line default is intentionally still Apple Health:
 
